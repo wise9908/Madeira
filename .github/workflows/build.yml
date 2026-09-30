@@ -1,0 +1,46 @@
+name: Build Madeira
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Select Xcode Version
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: Run Build Scripts
+        run: |
+          chmod +x build/*/build.sh 2>/dev/null || true
+          find build -name "*.sh" -exec chmod +x {} \;
+          ./build/unix/build.sh || true
+
+      - name: Build Xcode Project
+        run: |
+          xcodebuild archive \
+            -project Madeira.xcodeproj \
+            -scheme Madeira \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/Madeira.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+
+      - name: Package Payload
+        run: |
+          mkdir -p $RUNNER_TEMP/Payload
+          cp -r $RUNNER_TEMP/Madeira.xcarchive/Products/Applications/*.app $RUNNER_TEMP/Payload/
+          cd $RUNNER_TEMP
+          zip -r Madeira.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Madeira-Unsigned-IPA
+          path: ${{ runner.temp }}/Madeira.ipa
