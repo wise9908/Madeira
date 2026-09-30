@@ -16,28 +16,41 @@ jobs:
       - name: Select Xcode Version
         run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
 
-      - name: Run Build Scripts
+      - name: Make Scripts Executable & Run Unix Build
         run: |
-          chmod +x build/*/build.sh 2>/dev/null || true
-          find build -name "*.sh" -exec chmod +x {} \;
-          ./build/unix/build.sh || true
+          chmod -R +x .
+          if [ -f "./build/unix/build.sh" ]; then
+            ./build/unix/build.sh || true
+          fi
 
       - name: Build Xcode Project
         run: |
-          xcodebuild archive \
-            -project Madeira.xcodeproj \
-            -scheme Madeira \
+          PROJ_FILE=$(find . -maxdepth 2 -name "*.xcodeproj" | head -n 1)
+          echo "Found project: $PROJ_FILE"
+          
+          # Run xcodebuild directly without requiring fixed schemes
+          xcodebuild build \
+            -project "$PROJ_FILE" \
             -configuration Release \
-            -archivePath $RUNNER_TEMP/Madeira.xcarchive \
+            -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            BUILD_DIR=$RUNNER_TEMP/build_out || true
 
       - name: Package Payload
         run: |
           mkdir -p $RUNNER_TEMP/Payload
-          cp -r $RUNNER_TEMP/Madeira.xcarchive/Products/Applications/*.app $RUNNER_TEMP/Payload/
-          cd $RUNNER_TEMP
-          zip -r Madeira.ipa Payload
+          APP_DIR=$(find $RUNNER_TEMP/build_out -name "*.app" -type d | head -n 1)
+          
+          if [ -d "$APP_DIR" ]; then
+            cp -r "$APP_DIR" $RUNNER_TEMP/Payload/
+            cd $RUNNER_TEMP
+            zip -r Madeira.ipa Payload
+          else
+            echo "No .app bundle was compiled."
+            exit 1
+          fi
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
